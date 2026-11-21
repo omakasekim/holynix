@@ -1,9 +1,9 @@
 # HolyNix: Unix Kernel & Terminal Operating System in HolyC
 
-[![HolyNix CI](https://github.com/omakasekim/holynix/actions/workflows/ci.yml/badge.svg)](https://github.com/omakasekim/holynix/actions/workflows/ci.yml)
+[![HolyNix CI](https://github.com/Aetherx86/holynix/actions/workflows/ci.yml/badge.svg)](https://github.com/Aetherx86/holynix/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![HolyC: v1.0](https://img.shields.io/badge/HolyC-v1.0-blue.svg)](https://github.com/omakasekim/holynix)
-[![POSIX: Compliant](https://img.shields.io/badge/POSIX-Compliant-brightgreen.svg)](https://github.com/omakasekim/holynix)
+[![HolyC: v0.2.0](https://img.shields.io/badge/HolyC-v0.2.0-blue.svg)](https://github.com/Aetherx86/holynix)
+[![POSIX: Compliant](https://img.shields.io/badge/POSIX-Compliant-brightgreen.svg)](https://github.com/Aetherx86/holynix)
 
 > *"An idiot admires complexity, a genius admires simplicity."* — **Terry A. Davis**
 
@@ -174,7 +174,7 @@ make
 
 ### 3. Run Automated Tests
 ```bash
-# Run in-kernel tests (45/45) + Linux POSIX compliance TDD test suite (216/216)
+# Run in-kernel tests (55/55) + Linux POSIX compliance TDD test suite (270/270)
 make test
 
 # Or run the complete automated end-to-end verification script:
@@ -200,18 +200,18 @@ To run commands non-interactively in batch mode:
 
 HolyNix is verified on every commit across a **4-runner CI matrix** on GitHub Actions:
 
-| Runner OS | Compiler | In-Kernel (45/45) | POSIX TDD (216/216) | End-to-End Suite | Artifact Generated |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Ubuntu Linux** (`ubuntu-latest`) | `gcc` | **PASS** | **PASS** | **PASS** | — |
-| **Ubuntu Linux** (`ubuntu-latest`) | `clang` | **PASS** | **PASS** | **PASS** | `holynix-linux-x86_64` |
-| **macOS** (`macos-latest`) | `gcc` | **PASS** | **PASS** | **PASS** | — |
-| **macOS** (`macos-latest`) | `clang` | **PASS** | **PASS** | **PASS** | `holynix-darwin-arm64` |
+| Runner OS | Compiler | In-Kernel (55/55) | POSIX TDD (270/270) | End-to-End Suite |
+| :--- | :---: | :---: | :---: | :---: |
+| **Ubuntu Linux** (`ubuntu-latest`) | `gcc` | **PASS** | **PASS** | **PASS** |
+| **Ubuntu Linux** (`ubuntu-latest`) | `clang` | **PASS** | **PASS** | **PASS** |
+| **macOS** (`macos-latest`) | `gcc` | **PASS** | **PASS** | **PASS** |
+| **macOS** (`macos-latest`) | `clang` | **PASS** | **PASS** | **PASS** |
 
 ---
 
 ## Test-Driven Development (TDD) Compliance Matrix
 
-HolyNix incorporates 14 comprehensive TDD suites verifying 216 compliance assertions:
+HolyNix incorporates 18 comprehensive TDD suites verifying 270 compliance assertions:
 
 | Suite | Category | Verifications | Status |
 | :---: | :--- | :--- | :---: |
@@ -229,6 +229,10 @@ HolyNix incorporates 14 comprehensive TDD suites verifying 216 compliance assert
 | **12**| **Microkernel & Music System** | `/proc/modules`, `lsmod`, `insmod`, `rmmod`, `/proc/vmstat`, `vmstat`, `pstree`, `ulimit`, `ipcs`, `holyfetch`, `play`, `juke`, `screenshot` | **100% PASS** |
 | **13**| **Introspection, Flight & Limits** | `flight -p -r -a` 3D HUD, `matrix` rain, `linecnt` VFS counts, `hcbench`, `godword`, `which` missing errors, `type` alias/builtin/not-found, `hostname` root check & procfs sync, `sync`, `who`, `w`, `nl`, `xxd`, `time` | **100% PASS** |
 | **14**| **Command Line Matrix & Aliases** | `cal`, `seq` multi-step, `top -n 1`, `theme`, `clear`, `help`, `true`/`false` exit codes, `beep`, `godsong`, `donut`, `stty size/-a`, `whereis`, `split`, `toslinecnt`, `neofetch`, `fbgrab`, `more`, `getgod`, `music`, `godwords`, `poke`, `memdump`, `peek`, `u` disasm, `cron`, `crontab -a`, `redsea inspect/ls`, `bible`, `godpassage`, `ulimit -s/-u`, `ipcs`, `passwd` | **100% PASS** |
+| **15**| **RedSea Contiguous Cluster FS** | `redsea cat`, `redsea put`, `redsea extract`, `redsea fsck --json`, `redsea inspect --json`, `redsea ls --json`, corrupted volume rejection | **100% PASS** |
+| **16**| **HolyC Parser & x86-64 Disassembler** | `--eval` operator precedence, bitwise/hex/binary literals, safe div-by-zero, `for`/`while`/`if`/`else`, `asm` register arithmetic & stack, `disasm --hex`, `disasm --json` | **100% PASS** |
+| **17**| **HolyC Compiler Toolchain** | `./tools/holyc --version`, `--ast --json` translation unit telemetry, `--check` C11 type verification, hostile lexical error rejection | **100% PASS** |
+| **18**| **JSON Introspection & DolDoc Modes** | `--version`, `--bench --json`, `uname --json`, `ps --json`, `lsmod --json`, `vmstat --json`, `linecnt --json`, `hcbench --json`, `doldoc --strip`, `doldoc --json`, unclosed tag detection | **100% PASS** |
 
 ---
 
@@ -413,6 +417,49 @@ Task #3
 
 terry@holy-unix:/home/terry$ if [ -f /etc/motd ]; then echo "MOTD verified"; fi
 MOTD verified
+```
+
+---
+
+## What's New in v0.2.0
+
+### 1. RedSea 64-Bit Contiguous Cluster Filesystem (`cat`, `put`, `extract`, `fsck`)
+Read contiguous sectors, allocate clusters in the Sector 1 bitmap, extract files to the VFS, and run full volume consistency checks:
+```bash
+./bin/holy_unix -c "redsea fsck --json /boot/redsea.img"
+# {"valid":true,"image":"/boot/redsea.img","signature":"0x88AA","total_clusters":6,"allocated_clusters":6,"entries":3,"bitmap_consistent":true,"overlaps":0,"out_of_bounds":0,"checksum":"0xE91E15AD53065110"}
+
+./bin/holy_unix -c "redsea cat /boot/redsea.img KERNEL.BIN"
+# TempleOS 64-Bit HolyC Microkernel Binary (God's Temple Edition)
+
+./bin/holy_unix -c "echo 'Divine Payload' > /tmp/p.txt; redsea put /boot/redsea.img /tmp/p.txt PAYLOAD.TXT; redsea extract /boot/redsea.img PAYLOAD.TXT /tmp/out.txt; cat /tmp/out.txt"
+```
+
+### 2. Recursive-Descent HolyC Evaluator (`--eval`), Control Flow & Ring-0 x86-64 Disassembler
+Evaluate inline HolyC code with operator precedence, control flow (`for`, `while`, `if`/`else`), inline assembly register arithmetic, and raw x86-64 byte sequence disassembly:
+```bash
+./bin/holy_unix --eval 'I64 acc = 0; for (I64 i = 1; i <= 5; i++) { acc += i * 2; }; "acc=%d\n", acc;'
+
+./bin/holy_unix --eval 'asm { mov rax, 25; mov rbx, 17; add rax, rbx; push rax; pop rdx; }; "RAX=%d RDX=%d\n", RAX, RDX;'
+
+./bin/holy_unix -c "disasm --hex '55 48 89 E5 48 C7 C0 77 07 00 00 0F 05 5D C3'"
+```
+
+### 3. HolyC Compiler AST Telemetry & Syntax Checker (`tools/holyc`)
+Inspect HolyC translation units in JSON format or run fast C11 syntax and type checking without linking:
+```bash
+./tools/holyc --version
+./tools/holyc --ast --json tests/test_holyc.HC
+./tools/holyc --check tests/test_holyc.HC
+```
+
+### 4. Structured JSON Kernel Introspection, DolDoc Analysis & Benchmarks
+Query kernel subsystems, DolDoc document metrics, and JIT benchmarks in structured JSON:
+```bash
+./bin/holy_unix --version
+./bin/holy_unix --bench --json
+./bin/holy_unix -c "doldoc --json /home/terry/welcome.DD; doldoc --strip /home/terry/welcome.DD"
+./bin/holy_unix -c "uname --json; ps --json; lsmod --json; vmstat --json; linecnt --json; hcbench --json"
 ```
 
 ---

@@ -165,7 +165,7 @@ I64 NetCurl(const char *url, I64 flags, const char *outfile, char *out_buf, I64 
             "- flappy (TempleOS Bird Physics)\n"
             "- bible (KJV Scripture Search)\n");
     } else if (strstr(path, "version") != NULL || strcmp(path, "/version") == 0) {
-        snprintf(body, sizeof(body), "HolyC-Unix Kernel 1.0.0 (Terry Davis Memorial Edition x86_64)\n");
+        snprintf(body, sizeof(body), "HolyC-Unix Kernel 0.2.0 (Terry Davis Memorial Edition x86_64)\n");
     } else {
         snprintf(body, sizeof(body),
             "<!DOCTYPE html>\n<html>\n<head><title>HolyC Unix Web</title></head>\n"

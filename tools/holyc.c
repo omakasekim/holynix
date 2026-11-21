@@ -40,12 +40,23 @@
 
 #define MAX_INCLUDES 256
 #define MAX_INC_DIRS 16
+#define HOLYC_COMPILER_VERSION "0.2.0"
 
 static char g_included_files[MAX_INCLUDES][PATH_MAX];
 static int g_included_count = 0;
 
 static char g_include_search_dirs[MAX_INC_DIRS][PATH_MAX];
 static int g_include_search_dir_count = 0;
+
+/* AST & Transpilation Telemetry */
+static char g_ast_classes[128][64];
+static int g_ast_class_count = 0;
+static int g_ast_implicit_prints = 0;
+static int g_ast_bare_calls = 0;
+static int g_ast_asm_blocks = 0;
+static int g_ast_source_lines = 0;
+static int g_ast_lex_errors = 0;
+static char g_ast_error_msg[256] = "";
 
 typedef struct {
     char *data;
@@ -105,12 +116,23 @@ static bool is_bare_call_target(const char *name) {
     static const char *targets[] = {
         "Yield", "Uptime", "Dir", "Exit", "Clear", "Halt", "TaskSwitch",
         "SysHalt", "KPanic", "Help", "WhoAmI", "Dmesg", "Top", "Reboot",
+        "God", "GodPassage", "GodDoodle", "LineCnt", "HcBench",
         NULL
     };
     for (int i = 0; targets[i]; ++i) {
         if (strcmp(name, targets[i]) == 0) return true;
     }
     return false;
+}
+
+static void record_ast_class(const char *cname) {
+    if (!cname || !*cname) return;
+    for (int i = 0; i < g_ast_class_count; ++i) {
+        if (strcmp(g_ast_classes[i], cname) == 0) return;
+    }
+    if (g_ast_class_count < 128) {
+        snprintf(g_ast_classes[g_ast_class_count++], 64, "%s", cname);
+    }
 }
 
 static bool is_already_included(const char *path) {
@@ -157,6 +179,11 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
     bool seen_equal = false;
     int initializer_depth = 0;
 
+    for (size_t k = 0; k < len; ++k) {
+        if (src[k] == '\n') g_ast_source_lines++;
+    }
+    if (len > 0 && src[len - 1] != '\n') g_ast_source_lines++;
+
     while (i < len) {
         /* Whitespace */
         if (isspace((unsigned char)src[i])) {
@@ -180,9 +207,13 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
             while (i + 1 < len && !(src[i] == '*' && src[i + 1] == '/')) {
                 buf_append_char(out, src[i++]);
             }
-            if (i + 1 < len) {
+            if (i + 1 < len && src[i] == '*' && src[i + 1] == '/') {
                 buf_append_char(out, src[i++]);
                 buf_append_char(out, src[i++]);
+            } else {
+                g_ast_lex_errors++;
+                snprintf(g_ast_error_msg, sizeof(g_ast_error_msg), "unterminated block comment");
+                break;
             }
             continue;
         }
@@ -296,6 +327,7 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
          * ONLY active when at statement start AND NOT inside an initializer array/struct!
          */
         if (at_statement_start && initializer_depth == 0 && src[i] == '"') {
+            g_ast_implicit_prints++;
             buf_append_str(out, "Print(");
             while (i < len && src[i] != ';') {
                 if (src[i] == '"') {
@@ -308,6 +340,9 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
                     }
                     if (i < len && src[i] == '"') {
                         buf_append_char(out, src[i++]);
+                    } else {
+                        g_ast_lex_errors++;
+                        snprintf(g_ast_error_msg, sizeof(g_ast_error_msg), "unterminated string literal in implicit print");
                     }
                 } else {
                     buf_append_char(out, src[i++]);
@@ -327,12 +362,17 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
             i += (src[i] == 'a') ? 3 : 4;
             while (i < len && isspace((unsigned char)src[i])) i++;
             if (i < len && src[i] == '{') {
+                g_ast_asm_blocks++;
                 i++;
                 int bdepth = 1;
                 while (i < len && bdepth > 0) {
                     if (src[i] == '{') bdepth++;
                     else if (src[i] == '}') bdepth--;
                     i++;
+                }
+                if (bdepth != 0) {
+                    g_ast_lex_errors++;
+                    snprintf(g_ast_error_msg, sizeof(g_ast_error_msg), "unclosed asm block");
                 }
                 while (i < len && isspace((unsigned char)src[i])) i++;
                 if (i < len && src[i] == ';') i++;
@@ -354,6 +394,7 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
                 cname[ci++] = src[i++];
             }
             cname[ci] = '\0';
+            record_ast_class(cname);
 
             /* Peek ahead for ';' (forward declaration) vs '{' (definition) */
             size_t peek = i;
@@ -397,6 +438,7 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
                 size_t peek = i;
                 while (peek < len && isspace((unsigned char)src[peek])) peek++;
                 if (peek < len && src[peek] == ';') {
+                    g_ast_bare_calls++;
                     buf_append_str(out, ident);
                     buf_append_str(out, "();");
                     i = peek + 1;
@@ -421,6 +463,9 @@ static void transpile_file_content(const char *src, const char *curr_dir, Buffer
             }
             if (i < len && src[i] == '"') {
                 buf_append_char(out, src[i++]);
+            } else {
+                g_ast_lex_errors++;
+                snprintf(g_ast_error_msg, sizeof(g_ast_error_msg), "unterminated string literal");
             }
             at_statement_start = false;
             continue;
@@ -481,12 +526,15 @@ static char *transpile_holyc_file(const char *src_path, const char *rt_header_pa
 
 static void print_usage(const char *prog) {
     fprintf(stderr,
-        "HolyC Compiler & Transpiler (holyc)\n"
+        "HolyC Compiler & Transpiler (holyc) v" HOLYC_COMPILER_VERSION "\n"
         "Usage: %s [options] <source.HC> [-o output_binary]\n"
         "Options:\n"
         "  -o <file>       Specify output binary or object file\n"
         "  -E              Preprocess and transpile to C stdout\n"
         "  -c              Compile to object file without linking\n"
+        "  --check         Verify HolyC syntax and C11 type checking only\n"
+        "  --ast           Inspect HolyC AST metrics (classes, prints, asm, includes)\n"
+        "  --json          Output AST / transpiler telemetry in JSON format\n"
         "  --run           Transpile, compile, and run immediately\n"
         "  -I <dir>        Add include search path\n"
         "  -v, --version   Display version\n"
@@ -499,7 +547,11 @@ int main(int argc, char **argv) {
     bool flag_E = false;
     bool flag_c = false;
     bool flag_run = false;
+    bool flag_check = false;
+    bool flag_ast = false;
+    bool flag_json = false;
     char inc_dirs[4096] = "";
+    size_t inc_dirs_len = 0;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
@@ -510,17 +562,24 @@ int main(int argc, char **argv) {
             flag_c = true;
         } else if (strcmp(argv[i], "--run") == 0) {
             flag_run = true;
+        } else if (strcmp(argv[i], "--check") == 0) {
+            flag_check = true;
+        } else if (strcmp(argv[i], "--ast") == 0) {
+            flag_ast = true;
+        } else if (strcmp(argv[i], "--json") == 0) {
+            flag_json = true;
+            flag_ast = true;
         } else if (strcmp(argv[i], "-I") == 0 && i + 1 < argc) {
             const char *idir = argv[++i];
-            strcat(inc_dirs, " -I");
-            strcat(inc_dirs, idir);
+            int w = snprintf(inc_dirs + inc_dirs_len, sizeof(inc_dirs) - inc_dirs_len, " -I%s", idir);
+            if (w > 0 && inc_dirs_len + (size_t)w < sizeof(inc_dirs)) inc_dirs_len += (size_t)w;
             if (g_include_search_dir_count < MAX_INC_DIRS) {
                 snprintf(g_include_search_dirs[g_include_search_dir_count++], PATH_MAX, "%s", idir);
             }
         } else if (strncmp(argv[i], "-I", 2) == 0) {
             const char *idir = argv[i] + 2;
-            strcat(inc_dirs, " ");
-            strcat(inc_dirs, argv[i]);
+            int w = snprintf(inc_dirs + inc_dirs_len, sizeof(inc_dirs) - inc_dirs_len, " %s", argv[i]);
+            if (w > 0 && inc_dirs_len + (size_t)w < sizeof(inc_dirs)) inc_dirs_len += (size_t)w;
             if (g_include_search_dir_count < MAX_INC_DIRS) {
                 snprintf(g_include_search_dirs[g_include_search_dir_count++], PATH_MAX, "%s", idir);
             }
@@ -528,7 +587,7 @@ int main(int argc, char **argv) {
             print_usage(argv[0]);
             return 0;
         } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
-            printf("HolyC Compiler v1.0 (Darwin/Linux) - Designed for TerryDavis OS\n");
+            printf("HolyC Compiler v" HOLYC_COMPILER_VERSION " (Darwin/Linux) - Designed for TerryDavis OS\n");
             return 0;
         } else if (argv[i][0] != '-') {
             src_path = argv[i];
@@ -567,6 +626,45 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (g_ast_lex_errors > 0) {
+        if (flag_json) {
+            printf("{\"valid\":false,\"source\":\"%s\",\"lex_errors\":%d,\"error\":\"%s\"}\n",
+                   src_path, g_ast_lex_errors, g_ast_error_msg);
+        } else {
+            fprintf(stderr, "HolyC Lexical Error in '%s': %s\n", src_path, g_ast_error_msg);
+        }
+        free(transpiled);
+        return 1;
+    }
+
+    if (flag_ast) {
+        size_t tbytes = strlen(transpiled);
+        if (flag_json) {
+            printf("{\"valid\":true,\"version\":\"%s\",\"source\":\"%s\",\"files_included\":%d,"
+                   "\"source_lines\":%d,\"transpiled_bytes\":%zu,\"classes_count\":%d,"
+                   "\"implicit_prints\":%d,\"bare_calls\":%d,\"asm_blocks\":%d,\"classes\":[",
+                   HOLYC_COMPILER_VERSION, src_path, g_included_count,
+                   g_ast_source_lines, tbytes, g_ast_class_count,
+                   g_ast_implicit_prints, g_ast_bare_calls, g_ast_asm_blocks);
+            for (int c = 0; c < g_ast_class_count; ++c) {
+                printf("%s\"%s\"", (c > 0) ? "," : "", g_ast_classes[c]);
+            }
+            printf("]}\n");
+        } else {
+            printf("=== HolyC AST & Transpiler Analysis (%s) ===\n", src_path);
+            printf("  Compiler Version : v%s\n", HOLYC_COMPILER_VERSION);
+            printf("  Included Units   : %d\n", g_included_count);
+            printf("  Source Lines     : %d\n", g_ast_source_lines);
+            printf("  Transpiled Bytes : %zu\n", tbytes);
+            printf("  HolyC Classes    : %d\n", g_ast_class_count);
+            printf("  Implicit Prints  : %d\n", g_ast_implicit_prints);
+            printf("  Bare Calls       : %d\n", g_ast_bare_calls);
+            printf("  Inline ASM Blocks: %d\n", g_ast_asm_blocks);
+        }
+        free(transpiled);
+        return 0;
+    }
+
     if (flag_E) {
         printf("%s\n", transpiled);
         free(transpiled);
@@ -601,7 +699,11 @@ int main(int argc, char **argv) {
     const char *cc = getenv("CC");
     if (!cc || cc[0] == '\0') cc = "clang";
 
-    if (flag_c) {
+    if (flag_check) {
+        snprintf(cmd, sizeof(cmd),
+                 "%s -std=c11 -Wall -Wno-unused-function -Wno-pointer-sign -fsyntax-only%s \"%s\"",
+                 cc, inc_dirs, tmp_c_path);
+    } else if (flag_c) {
         snprintf(cmd, sizeof(cmd),
                  "%s -std=c11 -Wall -Wno-unused-function -Wno-pointer-sign -O2%s -c \"%s\" -o \"%s\"",
                  cc, inc_dirs, tmp_c_path, target_out);

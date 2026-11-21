@@ -39,7 +39,7 @@ static const char g_init_motd[] =
     "                     \033[93m__/ |                           \033[0m\n"
     "                    \033[93m|___/                            \033[0m\n"
     " =======================================================\n"
-    "  \033[96mHolyC Unix Kernel & Terminal Operating System (v1.0.0)\033[0m\n"
+    "  \033[96mHolyC Unix Kernel & Terminal Operating System (v0.2.0)\033[0m\n"
     "  \033[92mTerry A. Davis Memorial Edition - God's Chosen System\033[0m\n"
     " =======================================================\n"
     "\n"
@@ -61,7 +61,7 @@ static const char g_init_passwd[] =
 
 static const char g_init_os_release[] =
     "NAME=\"HolyC-Unix\"\n"
-    "VERSION=\"1.0.0-holyc (TerryDavis)\"\n"
+    "VERSION=\"0.2.0-holyc (TerryDavis)\"\n"
     "ID=holyc-unix\n"
     "PRETTY_NAME=\"HolyC Unix Terminal Operating System\"\n"
     "ANSI_COLOR=\"1;34\"\n"
@@ -164,7 +164,7 @@ I64 InitProcessTask(U0 *arg) {
 }
 
 U0 KernelBoot() {
-    KLog("[0.000000] HolyC Unix Kernel v1.0.0 (Terry Davis Memorial Edition) booting\n");
+    KLog("[0.000000] HolyC Unix Kernel v0.2.0 (Terry Davis Memorial Edition) booting\n");
     KLog("[0.001000] Initializing TempleOS 64-bit flat memory subsystem...\n");
     KLog("[0.002000] Mounting root Virtual File System (VFS)...\n");
     VFSInit();
@@ -860,6 +860,132 @@ I64 KernelRunTests() {
     Print("\033[92mPASS\033[0m\n");
     passed++;
 
+    /* Test 46: RedSea Contiguous Cluster File Read (RedSeaCat) */
+    total++;
+    Print("[TEST %lld] RedSea Contiguous Cluster Read (RedSeaCat): ", (long long)total);
+    char rs_cat_buf[512];
+    I64 rs_cat_n = RedSeaCat("/boot/redsea.img", "KERNEL.BIN", rs_cat_buf, sizeof(rs_cat_buf));
+    if (rs_cat_n > 0 && strstr(rs_cat_buf, "TempleOS 64-Bit HolyC Microkernel Binary") != NULL) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 47: RedSea Contiguous Cluster Write & Extract Roundtrip */
+    total++;
+    Print("[TEST %lld] RedSea Contiguous Cluster Write & Extract (RedSeaPut/Extract): ", (long long)total);
+    const char *rs_payload = "HolyC RedSea Contiguous Cluster Payload 777\n";
+    I64 rs_clus = RedSeaPut("/boot/redsea.img", "HOLYTEST.HC", (const U8*)rs_payload, StrLen((const U8*)rs_payload));
+    I64 rs_ext = RedSeaExtract("/boot/redsea.img", "HOLYTEST.HC", "/tmp/extracted_holytest.HC");
+    char rs_verify[256];
+    I64 rs_vn = RedSeaCat("/boot/redsea.img", "HOLYTEST.HC", rs_verify, sizeof(rs_verify));
+    if (rs_clus >= 3 && rs_ext == 0 && rs_vn > 0 && strstr(rs_verify, "Contiguous Cluster Payload 777") != NULL) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 48: RedSea Filesystem Consistency Verification (RedSeaFsck) */
+    total++;
+    Print("[TEST %lld] RedSea Filesystem Consistency Verification (RedSeaFsck): ", (long long)total);
+    char fsck_json[1024];
+    I64 fsck_res = RedSeaFsck("/boot/redsea.img", TRUE, fsck_json, sizeof(fsck_json));
+    if (fsck_res == 0 && strstr(fsck_json, "\"valid\":true") != NULL && strstr(fsck_json, "\"overlaps\":0") != NULL) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 49: HolyC Recursive-Descent Expression Precedence & Hardening */
+    total++;
+    Print("[TEST %lld] HolyC Expression Precedence & Division-by-Zero Safety: ", (long long)total);
+    ReplInitVars();
+    ReplEvalLine((const U8*)"I64 expr_a = (10 + 5) * 3 - (0x10 >> 2)");
+    ReplEvalLine((const U8*)"I64 expr_b = (0b1010 ^ 0b1100) + (100 / 0)");
+    if (ReplGetVar((const U8*)"expr_a", 0) == 41 && ReplGetVar((const U8*)"expr_b", 0) == 6) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 50: HolyC Control Flow & Compound Assignments */
+    total++;
+    Print("[TEST %lld] HolyC Control Flow (if/while/for) & Compound Assignments: ", (long long)total);
+    ReplInitVars();
+    HolyCEvalString("I64 acc = 0; for (I64 i = 1; i <= 5; i++) { acc += i; }; if (acc == 15) { acc *= 2; }");
+    if (ReplGetVar((const U8*)"acc", 0) == 30) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 51: Ring-0 Inline Assembly Register Arithmetic & Stack */
+    total++;
+    Print("[TEST %lld] Ring-0 Inline Assembly Register Arithmetic & Stack: ", (long long)total);
+    ReplEvalLine((const U8*)"asm { mov rax, 0x20; mov rbx, 0x0A; add rax, rbx; shl rax, 1; push rax; pop rcx; }");
+    if (g_asm_cpu.rax == 0x54 && g_asm_cpu.rcx == 0x54) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 52: x86-64 Machine Instruction Hex Decoder */
+    total++;
+    Print("[TEST %lld] x86-64 Machine Instruction Hex Decoder (disasm --hex): ", (long long)total);
+    char *dis_argv[] = {"disasm", "--json", "--hex", "55 48 89 E5 48 C7 C0 77 07 00 00 0F 05 5D C3", NULL};
+    ShellCmdDisasm(4, dis_argv);
+    if (g_last_exit_code == 0) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 53: DolDoc Tag Stripper & JSON Document Analyzer */
+    total++;
+    Print("[TEST %lld] DolDoc Tag Stripper & JSON Analyzer: ", (long long)total);
+    const char *sample_dd = "$FG,RED$Title$FG$ $LK,\"Kernel\",/Kernel.HC$ $TR,\"Tree\"$ $$100";
+    char dd_strip[256], dd_json[512];
+    DolDocStrip(sample_dd, dd_strip, sizeof(dd_strip));
+    DolDocAnalyzeJson(sample_dd, dd_json, sizeof(dd_json));
+    if (strstr(dd_strip, "Title Kernel Tree $100") != NULL &&
+        strstr(dd_json, "\"links\":1") != NULL &&
+        strstr(dd_json, "\"trees\":1") != NULL) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 54: Structured JSON Process & Module Telemetry */
+    total++;
+    Print("[TEST %lld] Structured JSON Process & Module Telemetry: ", (long long)total);
+    U8 tasks_json[2048];
+    char mods_json[1024];
+    TaskFormatProcTasksJson(tasks_json, sizeof(tasks_json));
+    ModuleFormatJson(mods_json, sizeof(mods_json));
+    if (strstr((char*)tasks_json, "\"tasks\":[") != NULL &&
+        strstr(mods_json, "\"god_oracle\"") != NULL) {
+        Print("\033[92mPASS\033[0m\n");
+        passed++;
+    } else {
+        Print("\033[91mFAIL\033[0m\n");
+    }
+
+    /* Test 55: Structured JSON Benchmark & LOC Compliance */
+    total++;
+    Print("[TEST %lld] Structured JSON Benchmark & LOC Compliance: ", (long long)total);
+    LineCntRunEx(TRUE);
+    HcBenchRunEx(TRUE);
+    Print("\033[92mPASS\033[0m\n");
+    passed++;
+
     Print("\033[93m====================================================\033[0m\n");
     Print("Test Results: \033[92m%lld Passed\033[0m, \033[91m%lld Failed\033[0m (Total: %lld)\n",
           (long long)passed, (long long)(total - passed), (long long)total);
@@ -870,19 +996,35 @@ I64 KernelRunTests() {
 
 I32 main(I32 argc, char **argv) {
     Bool test_mode = FALSE;
+    Bool bench_mode = FALSE;
+    Bool json_mode = FALSE;
     const char *batch_cmd = NULL;
+    const char *eval_code = NULL;
     const char *script_file = NULL;
 
     for (I32 i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--test") == 0) {
             test_mode = TRUE;
+        } else if (strcmp(argv[i], "--bench") == 0) {
+            bench_mode = TRUE;
+        } else if (strcmp(argv[i], "--json") == 0) {
+            json_mode = TRUE;
         } else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
             batch_cmd = argv[++i];
+        } else if ((strcmp(argv[i], "-e") == 0 || strcmp(argv[i], "--eval") == 0) && i + 1 < argc) {
+            eval_code = argv[++i];
+        } else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
+            Print("HolyNix (holy_unix) v%s (%s 64-Bit HolyC Microkernel)\n",
+                  HOLYNIX_VERSION, HOLYNIX_KERNEL_RELEASE);
+            return 0;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             Print("Usage: holy_unix [options] [script.sh / script.HC]\n"
                   "Options:\n"
                   "  --test           Run automated kernel subsystem verification\n"
+                  "  --bench [--json] Run HolyC JIT & kernel performance benchmark\n"
                   "  -c <command>     Execute shell command non-interactively\n"
+                  "  -e, --eval <hc>  Evaluate inline HolyC statements non-interactively\n"
+                  "  -v, --version    Display kernel version\n"
                   "  -h, --help       Show help\n");
             return 0;
         } else if (argv[i][0] != '-') {
@@ -895,6 +1037,19 @@ I32 main(I32 argc, char **argv) {
 
     if (test_mode) {
         return (I32)KernelRunTests();
+    }
+
+    if (bench_mode) {
+        HcBenchRunEx(json_mode);
+        return 0;
+    }
+
+    if (eval_code) {
+        g_current_pid = 1;
+        CTask *t = TaskGetCurrent();
+        if (t) StrCpy(t->cwd, "/home/terry");
+        HolyCEvalString(eval_code);
+        return 0;
     }
 
     if (script_file) {

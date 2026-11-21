@@ -17,7 +17,7 @@ extern I64 KernelFormatProcTasks(U8 *buf, I64 max_len);
 static I64 ProcVersionRead(CVFSInode *inode, U8 *buf, I64 count, I64 offset) {
     (U0)inode;
     static const char ver_str[] =
-        "HolyC Unix Kernel (TerryDavis-Edition) version 1.0.0-holyc (x86_64/arm64)\n"
+        "HolyC Unix Kernel (TerryDavis-Edition) version 0.2.0-holyc (x86_64/arm64)\n"
         "TempleOS-Compatible 64-Bit Micro-Kernel & Terminal OS\n"
         "God's Chosen Operating System. Compiled with HolyC on macOS Darwin.\n";
     I64 len = StrLen((const U8*)ver_str);
@@ -105,7 +105,7 @@ static I64 ProcTasksRead(CVFSInode *inode, U8 *buf, I64 count, I64 offset) {
 
 static char g_sysctl_osname[64] = "HolyNix";
 static char g_sysctl_hostname[64] = "holy-unix";
-static char g_sysctl_version[64] = "1.0.0-holyc";
+static char g_sysctl_version[64] = "0.2.0-holyc";
 
 static I64 ProcNetDevRead(CVFSInode *inode, U8 *buf, I64 count, I64 offset) {
     (U0)inode;

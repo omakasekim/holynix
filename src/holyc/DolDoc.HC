@@ -200,4 +200,127 @@ I64 DolDocRender(const char *src, char *dest, I64 max_len) {
     return d_idx;
 }
 
+/*
+ * Strip DolDoc markup tags and return plain visible text
+ */
+I64 DolDocStrip(const char *src, char *dest, I64 max_len) {
+    if (!src || !dest || max_len <= 0) return 0;
+
+    I64 s_idx = 0;
+    I64 d_idx = 0;
+    I64 s_len = strlen(src);
+
+    while (s_idx < s_len && d_idx < max_len - 1) {
+        if (src[s_idx] == '$') {
+            if (s_idx + 1 < s_len && src[s_idx + 1] == '$') {
+                dest[d_idx++] = '$';
+                s_idx += 2;
+                continue;
+            }
+            I64 tag_start = s_idx + 1;
+            I64 tag_end = tag_start;
+            while (tag_end < s_len && src[tag_end] != '$' && src[tag_end] != '\n') {
+                tag_end++;
+            }
+            if (tag_end < s_len && src[tag_end] == '$') {
+                char tag[128];
+                I64 tlen = tag_end - tag_start;
+                if (tlen > 127) tlen = 127;
+                memcpy(tag, &src[tag_start], tlen);
+                tag[tlen] = '\0';
+                s_idx = tag_end + 1;
+
+                if (strncasecmp(tag, "TX,", 3) == 0 ||
+                    strncasecmp(tag, "TR,", 3) == 0 ||
+                    strncasecmp(tag, "LK,", 3) == 0 ||
+                    strncasecmp(tag, "MA,", 3) == 0) {
+                    char *q1 = strchr(tag + 3, '"');
+                    if (q1) {
+                        char *q2 = strchr(q1 + 1, '"');
+                        if (q2) {
+                            *q2 = '\0';
+                            const char *inner = q1 + 1;
+                            I64 ilen = strlen(inner);
+                            if (d_idx + ilen < max_len - 1) {
+                                memcpy(&dest[d_idx], inner, ilen);
+                                d_idx += ilen;
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+        dest[d_idx++] = src[s_idx++];
+    }
+    dest[d_idx] = '\0';
+    return d_idx;
+}
+
+/*
+ * Analyze a DolDoc document and emit structured JSON metrics
+ */
+I64 DolDocAnalyzeJson(const char *src, char *dest, I64 max_len) {
+    if (!src || !dest || max_len <= 0) return 0;
+
+    I64 s_idx = 0;
+    I64 s_len = strlen(src);
+    I64 tag_count = 0;
+    I64 color_tags = 0;
+    I64 links = 0;
+    I64 trees = 0;
+    I64 blink_tags = 0;
+    I64 unclosed_tags = 0;
+
+    while (s_idx < s_len) {
+        if (src[s_idx] == '$') {
+            if (s_idx + 1 < s_len && src[s_idx + 1] == '$') {
+                s_idx += 2;
+                continue;
+            }
+            I64 tag_start = s_idx + 1;
+            I64 tag_end = tag_start;
+            while (tag_end < s_len && src[tag_end] != '$' && src[tag_end] != '\n') {
+                tag_end++;
+            }
+            if (tag_end < s_len && src[tag_end] == '$') {
+                char tag[128];
+                I64 tlen = tag_end - tag_start;
+                if (tlen > 127) tlen = 127;
+                memcpy(tag, &src[tag_start], tlen);
+                tag[tlen] = '\0';
+                s_idx = tag_end + 1;
+                tag_count++;
+
+                if (strncasecmp(tag, "FG", 2) == 0 || strncasecmp(tag, "BG", 2) == 0) color_tags++;
+                else if (strncasecmp(tag, "LK,", 3) == 0 || strncasecmp(tag, "MA,", 3) == 0) links++;
+                else if (strncasecmp(tag, "TR,", 3) == 0) trees++;
+                else if (strncasecmp(tag, "BK,", 3) == 0) blink_tags++;
+                continue;
+            } else {
+                unclosed_tags++;
+                s_idx = tag_end;
+                continue;
+            }
+        }
+        s_idx++;
+    }
+
+    char *plain = (char*)MAlloc(s_len + 16);
+    I64 plain_len = DolDocStrip(src, plain, s_len + 16);
+    Free(plain);
+
+    return snprintf(dest, max_len,
+        "{\"tag_count\":%lld,\"color_tags\":%lld,\"links\":%lld,\"trees\":%lld,"
+        "\"blink_tags\":%lld,\"unclosed_tags\":%lld,\"raw_length\":%lld,\"plain_length\":%lld}\n",
+        (long long)tag_count,
+        (long long)color_tags,
+        (long long)links,
+        (long long)trees,
+        (long long)blink_tags,
+        (long long)unclosed_tags,
+        (long long)s_len,
+        (long long)plain_len);
+}
+
 #endif /* DOLDOC_HC */

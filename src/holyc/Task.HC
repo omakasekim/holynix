@@ -83,6 +83,37 @@ I64 KernelFormatProcTasks(U8 *buf, I64 max_len) {
     return TaskFormatProcTasks(buf, max_len);
 }
 
+I64 TaskFormatProcTasksJson(U8 *buf, I64 max_len) {
+    if (!buf || max_len <= 0) return 0;
+    I64 offset = 0;
+    offset += snprintf((char*)buf + offset, max_len - offset, "{\"tasks\":[");
+    Bool first = TRUE;
+    for (I64 i = 0; i < MAX_TASKS; ++i) {
+        if (g_tasks[i].state == TASK_UNUSED) continue;
+        const char *st_str = "UNKNOWN";
+        switch (g_tasks[i].state) {
+            case TASK_READY:    st_str = "READY"; break;
+            case TASK_RUNNING:  st_str = "RUNNING"; break;
+            case TASK_SLEEPING: st_str = "SLEEPING"; break;
+            case TASK_ZOMBIE:   st_str = "ZOMBIE"; break;
+            case TASK_STOPPED:  st_str = "STOPPED"; break;
+        }
+        offset += snprintf((char*)buf + offset, max_len - offset,
+            "%s{\"pid\":%lld,\"ppid\":%lld,\"state\":\"%s\",\"ticks\":%lld,\"uid\":%lld,\"command\":\"%s\"}",
+            first ? "" : ",",
+            (long long)g_tasks[i].pid,
+            (long long)g_tasks[i].ppid,
+            st_str,
+            (long long)g_tasks[i].ticks_used,
+            (long long)g_tasks[i].uid,
+            (const char*)g_tasks[i].comm);
+        first = FALSE;
+        if (offset >= max_len - 128) break;
+    }
+    offset += snprintf((char*)buf + offset, max_len - offset, "]}\n");
+    return offset;
+}
+
 I64 TaskSpawn(const U8 *name, TaskEntryFn fn, U0 *arg, I64 ppid) {
     I64 slot = -1;
     for (I64 i = 1; i < MAX_TASKS; ++i) {
@@ -412,6 +443,10 @@ I64 ModuleRemove(const char *name) {
     return -1;
 }
 
+I64 ModuleGetCount() {
+    return g_module_count;
+}
+
 I64 ModuleFormatList(char *out_buf, I64 max_len) {
     if (!out_buf || max_len <= 0) return 0;
     I64 offset = 0;
@@ -425,6 +460,29 @@ I64 ModuleFormatList(char *out_buf, I64 max_len) {
             if (offset >= max_len - 128) break;
         }
     }
+    return offset;
+}
+
+I64 ModuleFormatJson(char *out_buf, I64 max_len) {
+    if (!out_buf || max_len <= 0) return 0;
+    I64 offset = 0;
+    offset += snprintf(out_buf + offset, max_len - offset,
+        "{\"count\":%lld,\"modules\":[", (long long)ModuleGetCount());
+    Bool first = TRUE;
+    for (I64 i = 0; i < MAX_MODULES; ++i) {
+        if (g_modules[i].loaded) {
+            offset += snprintf(out_buf + offset, max_len - offset,
+                "%s{\"name\":\"%s\",\"size\":%lld,\"ref_count\":%lld,\"author\":\"%s\"}",
+                first ? "" : ",",
+                g_modules[i].name,
+                (long long)g_modules[i].size,
+                (long long)g_modules[i].ref_count,
+                g_modules[i].author);
+            first = FALSE;
+            if (offset >= max_len - 128) break;
+        }
+    }
+    offset += snprintf(out_buf + offset, max_len - offset, "]}\n");
     return offset;
 }
 

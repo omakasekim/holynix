@@ -6,6 +6,10 @@
 #ifndef TYPES_HC
 #define TYPES_HC
 
+/* System Version */
+#define HOLYNIX_VERSION        "0.2.0"
+#define HOLYNIX_KERNEL_RELEASE "0.2.0-holyc"
+
 /* System Limits */
 #define MAX_TASKS          64
 #define MAX_FDS            32

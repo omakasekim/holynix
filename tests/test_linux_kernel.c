@@ -890,6 +890,201 @@ static void test_exhaustive_command_line_matrix(void) {
     ASSERT_STR_CONTAINS(out, "password updated successfully", "passwd updates user authentication token");
 }
 
+static int exec_raw_cmd(const char *full_cmd, char *out_buf, size_t buf_size) {
+    FILE *fp = popen(full_cmd, "r");
+    if (!fp) {
+        if (out_buf && buf_size > 0) out_buf[0] = '\0';
+        return -1;
+    }
+    size_t total = 0;
+    if (out_buf && buf_size > 0) {
+        while (total + 1 < buf_size) {
+            size_t n = fread(out_buf + total, 1, buf_size - 1 - total, fp);
+            if (n == 0) break;
+            total += n;
+        }
+        out_buf[total] = '\0';
+    }
+    int status = pclose(fp);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return -1;
+}
+
+/*
+ * ============================================================================
+ * [TDD Suite 15] RedSea 64-Bit Contiguous Cluster Filesystem Engine
+ * ============================================================================
+ */
+static void test_redsea_contiguous_cluster_fs(void) {
+    char out[8192];
+    printf(COLOR_CYAN "\n=== [TDD Suite 15] RedSea 64-Bit Contiguous Cluster Filesystem ===\n" COLOR_RESET);
+
+    /* 15.1 redsea cat reads actual contiguous cluster data from /boot/redsea.img */
+    exec_holy_unix("redsea cat /boot/redsea.img KERNEL.BIN", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "TempleOS 64-Bit HolyC Microkernel Binary", "redsea cat reads real cluster 3 payload for KERNEL.BIN");
+
+    exec_holy_unix("redsea cat /boot/redsea.img ONCE.HC", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "Welcome to HolyC! God is watching.", "redsea cat reads real cluster 4 payload for ONCE.HC");
+
+    exec_holy_unix("redsea cat /boot/redsea.img README.DD", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "Divine simplicity.", "redsea cat reads real cluster 5 payload for README.DD");
+
+    /* 15.2 redsea put & redsea extract roundtrip */
+    exec_holy_unix("echo 'Divine RedSea Roundtrip Data 2026' > /tmp/rs_in.txt; redsea put /boot/redsea.img /tmp/rs_in.txt ROUND.TXT; redsea extract /boot/redsea.img ROUND.TXT /tmp/rs_out.txt; cat /tmp/rs_out.txt", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "wrote 'ROUND.TXT'", "redsea put allocates contiguous cluster and writes entry");
+    ASSERT_STR_CONTAINS(out, "Divine RedSea Roundtrip Data 2026", "redsea extract recovers identical payload to VFS");
+
+    /* 15.3 redsea inspect --json and redsea ls --json */
+    exec_holy_unix("redsea inspect --json /boot/redsea.img", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"valid\":true", "redsea inspect --json validates volume");
+    ASSERT_STR_CONTAINS(out, "\"signature\":\"0x88AA\"", "redsea inspect --json reports 0x88AA signature");
+
+    exec_holy_unix("redsea ls --json /boot/redsea.img", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"name\":\"KERNEL.BIN\"", "redsea ls --json lists KERNEL.BIN entry");
+    ASSERT_STR_CONTAINS(out, "\"cluster\":3", "redsea ls --json reports starting cluster 3");
+
+    /* 15.4 redsea fsck consistency verification & hostile input handling */
+    exec_holy_unix("redsea fsck --json /boot/redsea.img", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"valid\":true", "redsea fsck --json confirms clean RedSea volume");
+    ASSERT_STR_CONTAINS(out, "\"bitmap_consistent\":true", "redsea fsck --json confirms bitmap consistency");
+    ASSERT_STR_CONTAINS(out, "\"overlaps\":0", "redsea fsck --json confirms zero cluster overlaps");
+
+    exec_holy_unix("echo 'bad_truncated_img' > /tmp/bad.img; redsea fsck --json /tmp/bad.img; echo code_$?", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"valid\":false", "redsea fsck rejects truncated/corrupted image");
+    ASSERT_STR_CONTAINS(out, "code_1", "redsea fsck returns non-zero exit code on corrupted volume");
+}
+
+/*
+ * ============================================================================
+ * [TDD Suite 16] HolyC Expression Parser, Control Flow & x86-64 Disassembler
+ * ============================================================================
+ */
+static void test_holyc_parser_and_disassembler(void) {
+    char out[8192];
+    printf(COLOR_CYAN "\n=== [TDD Suite 16] HolyC Parser, Control Flow & x86-64 Disassembler ===\n" COLOR_RESET);
+
+    /* 16.1 Operator precedence, bitwise shifts, hex/binary literals, and division-by-zero protection */
+    exec_raw_cmd("./bin/holy_unix --eval 'I64 a = (12 + 8) * 3 - (0x20 >> 2); I64 b = (0b1100 ^ 0b1010) + (99 / 0); \"a=%d b=%d hex=0x%X\\n\", a, b, 0x777;' 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "a=52 b=6 hex=0x777", "HolyC --eval computes operator precedence, hex/binary, and safe div-by-zero");
+
+    /* 16.2 Control flow (for/while/if/else) and compound assignments (+=, *=, ++) */
+    exec_raw_cmd("./bin/holy_unix --eval 'I64 s = 0; for (I64 i = 1; i <= 6; i++) { s += i; }; if (s == 21) { s *= 2; } else { s = 0; }; \"s=%d\\n\", s;' 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "s=42", "HolyC for-loop, if/else, +=, *=, and ++ evaluate accurately");
+
+    /* 16.3 Ring-0 inline assembly register arithmetic & stack push/pop */
+    exec_raw_cmd("./bin/holy_unix --eval 'asm { mov rax, 25; mov rbx, 17; add rax, rbx; push rax; pop rdx; }; \"RAX=%d RDX=%d\\n\", RAX, RDX;' 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "RAX=42 RDX=42", "Inline assembly updates CPU registers and exposes them to HolyC expressions");
+
+    /* 16.4 x86-64 machine code hex decoder (disasm --hex & --json) */
+    exec_holy_unix("disasm --hex '55 48 89 E5 48 C7 C0 77 07 00 00 48 83 C0 05 0F 05 5D C3'", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "push    rbp", "disasm --hex decodes 0x55 as push rbp");
+    ASSERT_STR_CONTAINS(out, "mov     rbp, rsp", "disasm --hex decodes 48 89 E5 as mov rbp, rsp");
+    ASSERT_STR_CONTAINS(out, "mov     rax, 0x777", "disasm --hex decodes 48 C7 C0 77 07 00 00 as mov rax, 0x777");
+    ASSERT_STR_CONTAINS(out, "add     rax, 0x5", "disasm --hex decodes 48 83 C0 05 as add rax, 0x5");
+    ASSERT_STR_CONTAINS(out, "syscall", "disasm --hex decodes 0F 05 as syscall");
+    ASSERT_STR_CONTAINS(out, "pop     rbp", "disasm --hex decodes 0x5D as pop rbp");
+    ASSERT_STR_CONTAINS(out, "ret", "disasm --hex decodes 0xC3 as ret");
+
+    exec_holy_unix("disasm --json --hex '50 48 31 C0 58 C3'", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"arch\":\"x86_64\"", "disasm --json --hex outputs x86_64 JSON schema");
+    ASSERT_STR_CONTAINS(out, "xor     rax, rax", "disasm --json --hex decodes 48 31 C0 as xor rax, rax");
+
+    exec_holy_unix("disasm --json --hex 'ZZ_INVALID_HEX'; echo code_$?", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"error\":\"invalid hex byte stream\"", "disasm --hex rejects malformed non-hex input");
+    ASSERT_STR_CONTAINS(out, "code_1", "disasm --hex sets exit code 1 on invalid hex");
+}
+
+/*
+ * ============================================================================
+ * [TDD Suite 17] HolyC Compiler & Transpiler Toolchain (tools/holyc)
+ * ============================================================================
+ */
+static void test_holyc_compiler_toolchain(void) {
+    char out[8192];
+    printf(COLOR_CYAN "\n=== [TDD Suite 17] HolyC Compiler & Transpiler Toolchain ===\n" COLOR_RESET);
+
+    /* 17.1 Compiler version */
+    exec_raw_cmd("./tools/holyc --version 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "HolyC Compiler v0.2.0", "tools/holyc --version reports v0.2.0");
+
+    /* 17.2 AST & Transpiler JSON inspection on tests/test_holyc.HC and src/holyc/Kernel.HC */
+    exec_raw_cmd("./tools/holyc --ast --json tests/test_holyc.HC 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"valid\":true", "tools/holyc --ast --json validates test_holyc.HC");
+    ASSERT_STR_CONTAINS(out, "\"CPerson\"", "tools/holyc --ast --json extracts CPerson class");
+    ASSERT_STR_CONTAINS(out, "\"bare_calls\":1", "tools/holyc --ast --json counts bare Yield call");
+
+    exec_raw_cmd("./tools/holyc --ast --json -Isrc/holyc src/holyc/Kernel.HC 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"valid\":true", "tools/holyc --ast --json validates full Kernel.HC tree");
+    ASSERT_STR_CONTAINS(out, "\"CTask\"", "tools/holyc --ast --json discovers CTask across includes");
+
+    /* 17.3 Syntax & type verification (--check) */
+    int chk_code = exec_raw_cmd("./tools/holyc --check tests/test_holyc.HC 2>&1", out, sizeof(out));
+    ASSERT_TRUE(chk_code == 0, "tools/holyc --check verifies syntax and C11 types without linking");
+
+    /* 17.4 Hostile lexical input hardening */
+    FILE *fbad = fopen("/tmp/holyc_hostile_unclosed.HC", "w");
+    if (fbad) {
+        fputs("/* Unterminated comment without closing star-slash\nI64 x = 1;\n", fbad);
+        fclose(fbad);
+    }
+    int bad_code = exec_raw_cmd("./tools/holyc --ast --json /tmp/holyc_hostile_unclosed.HC 2>&1", out, sizeof(out));
+    unlink("/tmp/holyc_hostile_unclosed.HC");
+    ASSERT_TRUE(bad_code != 0, "tools/holyc rejects file with unterminated block comment");
+    ASSERT_STR_CONTAINS(out, "\"valid\":false", "tools/holyc --json reports valid:false on lexical error");
+}
+
+/*
+ * ============================================================================
+ * [TDD Suite 18] Structured JSON Introspection, DolDoc Modes & Benchmark CLI
+ * ============================================================================
+ */
+static void test_json_introspection_and_doldoc_modes(void) {
+    char out[8192];
+    printf(COLOR_CYAN "\n=== [TDD Suite 18] Structured JSON Introspection, DolDoc & Benchmarks ===\n" COLOR_RESET);
+
+    /* 18.1 CLI --version and --bench --json */
+    exec_raw_cmd("./bin/holy_unix --version 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "HolyNix (holy_unix) v0.2.0", "holy_unix --version reports v0.2.0");
+
+    exec_raw_cmd("./bin/holy_unix --bench --json 2>&1", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"version\":\"0.2.0\"", "holy_unix --bench --json reports version 0.2.0");
+    ASSERT_STR_CONTAINS(out, "\"ast_lines_per_sec\":", "holy_unix --bench --json reports ast_lines_per_sec");
+    ASSERT_STR_CONTAINS(out, "\"vfs_iops\":", "holy_unix --bench --json reports vfs_iops");
+
+    /* 18.2 Shell JSON introspection flags */
+    exec_holy_unix("uname --json", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"release\":\"0.2.0-holyc\"", "uname --json outputs kernel release 0.2.0-holyc");
+
+    exec_holy_unix("ps --json", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"tasks\":[", "ps --json outputs structured tasks array");
+    ASSERT_STR_CONTAINS(out, "\"command\":\"init\"", "ps --json includes PID 1 init process");
+
+    exec_holy_unix("lsmod --json", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"modules\":[", "lsmod --json outputs loaded kernel modules array");
+    ASSERT_STR_CONTAINS(out, "\"name\":\"redsea_fs\"", "lsmod --json includes redsea_fs module");
+
+    exec_holy_unix("vmstat --json", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"mem_free_kb\":49152", "vmstat --json outputs structured memory metrics");
+
+    exec_holy_unix("linecnt --json", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"compliant\":true", "linecnt --json reports 100k LOC compliance");
+
+    exec_holy_unix("hcbench --json", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"jit_inst_per_sec\":", "hcbench --json outputs JIT throughput");
+
+    /* 18.3 DolDoc --strip and --json modes + hostile unclosed tag handling */
+    exec_holy_unix("doldoc --strip /home/terry/welcome.DD", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "Welcome to TempleOS DolDoc on HolyNix", "doldoc --strip preserves visible text");
+    ASSERT_STR_NOT_CONTAINS(out, "$FG", "doldoc --strip removes $FG tags");
+
+    exec_holy_unix("doldoc --json /home/terry/welcome.DD", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"links\":3", "doldoc --json counts 3 hyperlinks in welcome.DD");
+    ASSERT_STR_CONTAINS(out, "\"trees\":1", "doldoc --json counts 1 collapsible tree in welcome.DD");
+
+    exec_holy_unix("echo '$FG,RED$Unclosed $TAG_WITHOUT_END' > /tmp/unclosed.DD; doldoc --json /tmp/unclosed.DD", out, sizeof(out));
+    ASSERT_STR_CONTAINS(out, "\"unclosed_tags\":1", "doldoc --json detects unclosed DolDoc tag safely");
+}
+
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
     printf(COLOR_YELLOW "========================================================\n");
@@ -910,6 +1105,10 @@ int main(int argc, char **argv) {
     test_microkernel_subsystems_and_music();
     test_system_introspection_and_templeos_flight();
     test_exhaustive_command_line_matrix();
+    test_redsea_contiguous_cluster_fs();
+    test_holyc_parser_and_disassembler();
+    test_holyc_compiler_toolchain();
+    test_json_introspection_and_doldoc_modes();
 
     printf("\n" COLOR_YELLOW "========================================================\n");
     printf("  TDD Test Results: " COLOR_GREEN "%d Passed" COLOR_RESET ", "

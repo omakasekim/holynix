@@ -264,7 +264,7 @@ U0 ShellCmdEcho(I64 argc, char **argv) {
 
     for (I64 i = start; i < argc; ++i) {
         const char *arg = argv[i];
-        if (arg[0] == '$') {
+        if (arg[0] == '$' && strchr(arg + 1, '$') == NULL && strchr(arg + 1, ',') == NULL && strchr(arg + 1, ' ') == NULL) {
             const char *val = ShellGetEnv(arg + 1);
             if (val) arg = val;
             else arg = "";
@@ -283,11 +283,14 @@ U0 ShellCmdEcho(I64 argc, char **argv) {
  * Built-in Command: ps
  */
 U0 ShellCmdPs(I64 argc, char **argv) {
-    (U0)argc; (U0)argv;
-    U8 buf[2048];
-    I64 n = TaskFormatProcTasks(buf, sizeof(buf));
+    Bool json_mode = FALSE;
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) json_mode = TRUE;
+    }
+    U8 buf[4096];
+    I64 n = json_mode ? TaskFormatProcTasksJson(buf, sizeof(buf)) : TaskFormatProcTasks(buf, sizeof(buf));
     if (n > 0) {
-        Print("%s", buf);
+        ShellPrintOut("%s", buf);
     }
     g_last_exit_code = 0;
 }
@@ -445,13 +448,23 @@ U0 ShellCmdKill(I64 argc, char **argv) {
  */
 U0 ShellCmdUname(I64 argc, char **argv) {
     Bool all = FALSE;
-    if (argc > 1 && StrCmp((const U8*)argv[1], "-a") == 0) all = TRUE;
+    Bool json_mode = FALSE;
+    for (I64 i = 1; i < argc; ++i) {
+        if (StrCmp((const U8*)argv[i], "-a") == 0) all = TRUE;
+        else if (StrCmp((const U8*)argv[i], "--json") == 0) json_mode = TRUE;
+    }
 
-    if (all) {
-        ShellPrintOut("HolyC-Unix holy-unix 1.0.0-holyc Darwin arm64 HolyC-Compiler-v1 GNU/TempleOS\n");
+    if (json_mode) {
+        ShellPrintOut("{\"sysname\":\"HolyC-Unix\",\"nodename\":\"%s\",\"release\":\"%s\","
+                      "\"version\":\"%s\",\"machine\":\"x86_64\",\"os\":\"GNU/TempleOS\"}\n",
+                      g_sysctl_hostname, HOLYNIX_KERNEL_RELEASE, HOLYNIX_VERSION);
+    } else if (all) {
+        ShellPrintOut("HolyC-Unix %s %s Darwin arm64 HolyC-Compiler-v0.2.0 GNU/TempleOS\n",
+                      g_sysctl_hostname, HOLYNIX_KERNEL_RELEASE);
     } else {
         ShellPrintOut("HolyC-Unix\n");
     }
+    g_last_exit_code = 0;
 }
 
 /*
@@ -1184,13 +1197,18 @@ U0 ShellCmdDirname(I64 argc, char **argv) {
  * Built-in Commands: lsmod, insmod, rmmod
  */
 extern I64 ModuleFormatList(char *out_buf, I64 max_len);
+extern I64 ModuleFormatJson(char *out_buf, I64 max_len);
 extern I64 ModuleAdd(const char *name, I64 size, const char *author);
 extern I64 ModuleRemove(const char *name);
 
 U0 ShellCmdLsmod(I64 argc, char **argv) {
-    (U0)argc; (U0)argv;
+    Bool json_mode = FALSE;
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) json_mode = TRUE;
+    }
     char buf[2048];
-    ModuleFormatList(buf, sizeof(buf));
+    if (json_mode) ModuleFormatJson(buf, sizeof(buf));
+    else ModuleFormatList(buf, sizeof(buf));
     ShellPrintOut("%s", buf);
     g_last_exit_code = 0;
 }
@@ -1223,7 +1241,16 @@ U0 ShellCmdRmmod(I64 argc, char **argv) {
  * Built-in Commands: vmstat, ulimit, pstree, ipcs
  */
 U0 ShellCmdVmstat(I64 argc, char **argv) {
-    (U0)argc; (U0)argv;
+    Bool json_mode = FALSE;
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) json_mode = TRUE;
+    }
+    if (json_mode) {
+        ShellPrintOut("{\"procs_r\":1,\"procs_b\":0,\"mem_swpd_kb\":0,\"mem_free_kb\":49152,"
+                      "\"mem_buff_kb\":4096,\"mem_cache_kb\":12288,\"cpu_us\":2,\"cpu_sy\":3,\"cpu_id\":95}\n");
+        g_last_exit_code = 0;
+        return;
+    }
     ShellPrintOut("procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----\n"
                   " r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st\n"
                   " 1  0      0  49152   4096  12288    0    0     0     0   10   20  2  3 95  0  0\n");
@@ -1327,14 +1354,20 @@ U0 ShellCmdMatrix(I64 argc, char **argv) {
 }
 
 U0 ShellCmdLineCnt(I64 argc, char **argv) {
-    (U0)argc; (U0)argv;
-    LineCntRun();
+    Bool json_mode = FALSE;
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) json_mode = TRUE;
+    }
+    LineCntRunEx(json_mode);
     g_last_exit_code = 0;
 }
 
 U0 ShellCmdHcBench(I64 argc, char **argv) {
-    (U0)argc; (U0)argv;
-    HcBenchRun();
+    Bool json_mode = FALSE;
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) json_mode = TRUE;
+    }
+    HcBenchRunEx(json_mode);
     g_last_exit_code = 0;
 }
 
@@ -2959,14 +2992,24 @@ U0 ShellCmdCron(I64 argc, char **argv) {
  * Built-in Command: doldoc & holyless
  */
 U0 ShellCmdDolDoc(I64 argc, char **argv) {
-    if (argc < 2) {
-        ShellPrintOut("Usage: doldoc <file.DD>\n");
+    Bool strip_mode = FALSE;
+    Bool json_mode = FALSE;
+    const char *file = NULL;
+
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--strip") == 0) strip_mode = TRUE;
+        else if (strcmp(argv[i], "--json") == 0) json_mode = TRUE;
+        else if (argv[i][0] != '-') file = argv[i];
+    }
+
+    if (!file) {
+        ShellPrintOut("Usage: doldoc [--strip | --json] <file.DD>\n");
         g_last_exit_code = 1;
         return;
     }
-    I64 fd = SysOpen((const U8*)argv[1], O_RDONLY);
+    I64 fd = SysOpen((const U8*)file, O_RDONLY);
     if (fd < 0) {
-        ShellPrintOut("doldoc: cannot open '%s'\n", argv[1]);
+        ShellPrintOut("doldoc: cannot open '%s'\n", file);
         g_last_exit_code = 1;
         return;
     }
@@ -2977,8 +3020,16 @@ U0 ShellCmdDolDoc(I64 argc, char **argv) {
     raw[n] = '\0';
 
     char rendered[8192];
-    DolDocRender(raw, rendered, sizeof(rendered));
-    ShellPrintOut("%s\n", rendered);
+    if (json_mode) {
+        DolDocAnalyzeJson(raw, rendered, sizeof(rendered));
+        ShellPrintOut("%s", rendered);
+    } else if (strip_mode) {
+        DolDocStrip(raw, rendered, sizeof(rendered));
+        ShellPrintOut("%s\n", rendered);
+    } else {
+        DolDocRender(raw, rendered, sizeof(rendered));
+        ShellPrintOut("%s\n", rendered);
+    }
     g_last_exit_code = 0;
 }
 
@@ -3064,36 +3115,122 @@ U0 ShellCmdGodDoodle(I64 argc, char **argv) {
  */
 U0 ShellCmdRedSea(I64 argc, char **argv) {
     if (argc < 3) {
-        ShellPrintOut("Usage: redsea [inspect <image> | ls <image> | cat <image> <file>]\n");
+        ShellPrintOut("Usage: redsea [inspect | ls | cat | put | extract | fsck] [--json] <image> [args...]\n");
         g_last_exit_code = 1;
         return;
     }
-    if (strcmp(argv[1], "inspect") == 0) {
-        char buf[2048];
-        RedSeaInspect(argv[2], buf, sizeof(buf));
-        ShellPrintOut("%s", buf);
-        g_last_exit_code = 0;
+
+    Bool json_mode = FALSE;
+    const char *subcmd = argv[1];
+    const char *pos_args[8];
+    I64 pos_count = 0;
+
+    for (I64 i = 2; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) {
+            json_mode = TRUE;
+        } else if (pos_count < 8) {
+            pos_args[pos_count++] = argv[i];
+        }
+    }
+
+    if (pos_count < 1) {
+        ShellPrintOut("redsea: missing image path\n");
+        g_last_exit_code = 1;
         return;
     }
-    if (strcmp(argv[1], "ls") == 0) {
+    const char *img_path = pos_args[0];
+
+    if (strcmp(subcmd, "inspect") == 0) {
         char buf[2048];
-        RedSeaList(argv[2], buf, sizeof(buf));
+        I64 res = json_mode ? RedSeaInspectJson(img_path, buf, sizeof(buf)) : RedSeaInspect(img_path, buf, sizeof(buf));
         ShellPrintOut("%s", buf);
-        g_last_exit_code = 0;
+        g_last_exit_code = (res >= 0) ? 0 : 1;
         return;
     }
-    if (strcmp(argv[1], "cat") == 0) {
-        if (argc < 4) {
+    if (strcmp(subcmd, "ls") == 0) {
+        char buf[2048];
+        I64 res = json_mode ? RedSeaListJson(img_path, buf, sizeof(buf)) : RedSeaList(img_path, buf, sizeof(buf));
+        ShellPrintOut("%s", buf);
+        g_last_exit_code = (res >= 0) ? 0 : 1;
+        return;
+    }
+    if (strcmp(subcmd, "cat") == 0) {
+        if (pos_count < 2) {
             ShellPrintOut("Usage: redsea cat <image> <filename>\n");
             g_last_exit_code = 1;
             return;
         }
-        ShellPrintOut("\033[92m[RedSea File Content: %s]\033[0m\n", argv[3]);
-        ShellPrintOut("TempleOS RedSea: Simplicity is Divine.\n");
-        g_last_exit_code = 0;
+        char buf[4096];
+        I64 n = RedSeaCat(img_path, pos_args[1], buf, sizeof(buf));
+        if (n >= 0) {
+            ShellPrintOut("%s", buf);
+            if (n > 0 && buf[n - 1] != '\n') ShellPrintOut("\n");
+            g_last_exit_code = 0;
+        } else {
+            ShellPrintOut("redsea cat: cannot read '%s' from '%s'\n", pos_args[1], img_path);
+            g_last_exit_code = 1;
+        }
         return;
     }
-    ShellPrintOut("redsea: unknown command '%s'\n", argv[1]);
+    if (strcmp(subcmd, "put") == 0) {
+        if (pos_count < 2) {
+            ShellPrintOut("Usage: redsea put <image> <vfs_src> [redsea_name]\n");
+            g_last_exit_code = 1;
+            return;
+        }
+        const char *vfs_src = pos_args[1];
+        const char *rs_name = (pos_count >= 3) ? pos_args[2] : NULL;
+        if (!rs_name) {
+            const char *slash = strrchr(vfs_src, '/');
+            rs_name = slash ? (slash + 1) : vfs_src;
+        }
+        I64 src_fd = SysOpen((const U8*)vfs_src, O_RDONLY);
+        if (src_fd < 0) {
+            ShellPrintOut("redsea put: cannot open VFS source '%s'\n", vfs_src);
+            g_last_exit_code = 1;
+            return;
+        }
+        U8 fbuf[8192];
+        I64 fn = SysRead(src_fd, fbuf, sizeof(fbuf));
+        SysClose(src_fd);
+        if (fn < 0) fn = 0;
+        I64 clus = RedSeaPut(img_path, rs_name, fbuf, fn);
+        if (clus >= 3) {
+            ShellPrintOut("redsea put: wrote '%s' (%lld bytes) to cluster %lld in '%s'\n",
+                          rs_name, (long long)fn, (long long)clus, img_path);
+            g_last_exit_code = 0;
+        } else {
+            ShellPrintOut("redsea put: failed to write '%s' to '%s'\n", rs_name, img_path);
+            g_last_exit_code = 1;
+        }
+        return;
+    }
+    if (strcmp(subcmd, "extract") == 0) {
+        if (pos_count < 3) {
+            ShellPrintOut("Usage: redsea extract <image> <filename> <dest_vfs_path>\n");
+            g_last_exit_code = 1;
+            return;
+        }
+        I64 res = RedSeaExtract(img_path, pos_args[1], pos_args[2]);
+        if (res == 0) {
+            ShellPrintOut("redsea extract: extracted '%s' from '%s' to '%s'\n",
+                          pos_args[1], img_path, pos_args[2]);
+            g_last_exit_code = 0;
+        } else {
+            ShellPrintOut("redsea extract: failed to extract '%s' from '%s'\n",
+                          pos_args[1], img_path);
+            g_last_exit_code = 1;
+        }
+        return;
+    }
+    if (strcmp(subcmd, "fsck") == 0) {
+        char buf[2048];
+        I64 res = RedSeaFsck(img_path, json_mode, buf, sizeof(buf));
+        ShellPrintOut("%s", buf);
+        g_last_exit_code = (res == 0) ? 0 : 1;
+        return;
+    }
+    ShellPrintOut("redsea: unknown command '%s'\n", subcmd);
     g_last_exit_code = 1;
 }
 
@@ -3150,20 +3287,185 @@ U0 ShellCmdPoke(I64 argc, char **argv) {
     g_last_exit_code = 0;
 }
 
+static const char *s_x86_reg64[8] = { "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi" };
+static const char *s_x86_reg32[8] = { "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi" };
+
+static I64 DisasmParseHexStream(const char *hex_str, U8 *out_bytes, I64 max_bytes) {
+    if (!hex_str || !out_bytes || max_bytes <= 0) return 0;
+    I64 count = 0;
+    const char *p = hex_str;
+    while (*p && count < max_bytes) {
+        while (*p && (isspace((unsigned char)*p) || *p == ',' || *p == ';')) p++;
+        if (!*p) break;
+        if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
+        if (!isxdigit((unsigned char)p[0])) {
+            return -1; /* Invalid hex input */
+        }
+        char pair[3] = { p[0], '\0', '\0' };
+        p++;
+        if (isxdigit((unsigned char)p[0])) {
+            pair[1] = p[0];
+            p++;
+        }
+        out_bytes[count++] = (U8)strtoul(pair, NULL, 16);
+    }
+    return count;
+}
+
+static I64 DisasmDecodeInstruction(const U8 *code, I64 avail, U64 cur_addr, char *bytes_str, size_t bmax, char *asm_str, size_t amax) {
+    if (avail <= 0) return 0;
+    U8 b0 = code[0];
+    I64 len = 1;
+
+    if (b0 == 0x90) {
+        snprintf(asm_str, amax, "nop");
+    } else if (b0 == 0xC3) {
+        snprintf(asm_str, amax, "ret");
+    } else if (b0 == 0xCC) {
+        snprintf(asm_str, amax, "int3");
+    } else if (b0 == 0xF4) {
+        snprintf(asm_str, amax, "hlt");
+    } else if (b0 >= 0x50 && b0 <= 0x57) {
+        snprintf(asm_str, amax, "push    %s", s_x86_reg64[b0 - 0x50]);
+    } else if (b0 >= 0x58 && b0 <= 0x5F) {
+        snprintf(asm_str, amax, "pop     %s", s_x86_reg64[b0 - 0x58]);
+    } else if (b0 == 0x0F && avail >= 2 && code[1] == 0x05) {
+        len = 2;
+        snprintf(asm_str, amax, "syscall");
+    } else if (b0 == 0xCD && avail >= 2) {
+        len = 2;
+        snprintf(asm_str, amax, "int     0x%02x", (unsigned int)code[1]);
+    } else if (b0 >= 0xB8 && b0 <= 0xBF && avail >= 5) {
+        len = 5;
+        U32 imm = (U32)code[1] | ((U32)code[2] << 8) | ((U32)code[3] << 16) | ((U32)code[4] << 24);
+        snprintf(asm_str, amax, "mov     %s, 0x%x", s_x86_reg32[b0 - 0xB8], (unsigned int)imm);
+    } else if (b0 == 0xE8 && avail >= 5) {
+        len = 5;
+        I32 rel = (I32)((U32)code[1] | ((U32)code[2] << 8) | ((U32)code[3] << 16) | ((U32)code[4] << 24));
+        U64 target = cur_addr + 5 + (I64)rel;
+        snprintf(asm_str, amax, "call    0x%llx", (unsigned long long)target);
+    } else if (b0 == 0xE9 && avail >= 5) {
+        len = 5;
+        I32 rel = (I32)((U32)code[1] | ((U32)code[2] << 8) | ((U32)code[3] << 16) | ((U32)code[4] << 24));
+        U64 target = cur_addr + 5 + (I64)rel;
+        snprintf(asm_str, amax, "jmp     0x%llx", (unsigned long long)target);
+    } else if (b0 == 0xEB && avail >= 2) {
+        len = 2;
+        I8 rel = (I8)code[1];
+        U64 target = cur_addr + 2 + (I64)rel;
+        snprintf(asm_str, amax, "jmp     0x%llx", (unsigned long long)target);
+    } else if (b0 == 0x48 && avail >= 3) {
+        U8 op = code[1];
+        U8 modrm = code[2];
+        U8 mod = (modrm >> 6) & 3;
+        U8 reg = (modrm >> 3) & 7;
+        U8 rm  = modrm & 7;
+
+        if ((op == 0x89 || op == 0x31 || op == 0x01 || op == 0x29) && mod == 3) {
+            len = 3;
+            const char *mnem = (op == 0x89) ? "mov" : (op == 0x31) ? "xor" : (op == 0x01) ? "add" : "sub";
+            snprintf(asm_str, amax, "%-7s %s, %s", mnem, s_x86_reg64[rm], s_x86_reg64[reg]);
+        } else if (op == 0x89 && mod == 1 && avail >= 4) {
+            len = 4;
+            I8 disp = (I8)code[3];
+            if (disp < 0) snprintf(asm_str, amax, "mov     QWORD PTR [%s-0x%x], %s", s_x86_reg64[rm], (unsigned int)(-disp), s_x86_reg64[reg]);
+            else snprintf(asm_str, amax, "mov     QWORD PTR [%s+0x%x], %s", s_x86_reg64[rm], (unsigned int)disp, s_x86_reg64[reg]);
+        } else if (op == 0xC7 && mod == 3 && reg == 0 && avail >= 7) {
+            len = 7;
+            U32 imm = (U32)code[3] | ((U32)code[4] << 8) | ((U32)code[5] << 16) | ((U32)code[6] << 24);
+            snprintf(asm_str, amax, "mov     %s, 0x%x", s_x86_reg64[rm], (unsigned int)imm);
+        } else if (op == 0x83 && mod == 3 && avail >= 4) {
+            len = 4;
+            U8 imm8 = code[3];
+            const char *mnem = (reg == 0) ? "add" : (reg == 5) ? "sub" : (reg == 6) ? "xor" : (reg == 7) ? "cmp" : "alu";
+            snprintf(asm_str, amax, "%-7s %s, 0x%x", mnem, s_x86_reg64[rm], (unsigned int)imm8);
+        } else if (op == 0xFF && mod == 3 && (reg == 0 || reg == 1)) {
+            len = 3;
+            snprintf(asm_str, amax, "%-7s %s", (reg == 0) ? "inc" : "dec", s_x86_reg64[rm]);
+        } else {
+            len = 1;
+            snprintf(asm_str, amax, "db      0x%02x", (unsigned int)b0);
+        }
+    } else {
+        snprintf(asm_str, amax, "db      0x%02x", (unsigned int)b0);
+    }
+
+    bytes_str[0] = '\0';
+    size_t boff = 0;
+    for (I64 i = 0; i < len && boff + 4 < bmax; ++i) {
+        boff += snprintf(bytes_str + boff, bmax - boff, "%s%02X", (i > 0) ? " " : "", (unsigned int)code[i]);
+    }
+    return len;
+}
+
 U0 ShellCmdDisasm(I64 argc, char **argv) {
     U64 addr = 0x401000;
     I64 count = 8;
-    if (argc > 1) {
-        addr = strtoull(argv[1], NULL, 16);
-    }
-    if (argc > 2) {
-        count = atoi(argv[2]);
-        if (count <= 0) count = 8;
-        if (count > 32) count = 32;
+    Bool json_mode = FALSE;
+    const char *hex_input = NULL;
+    I64 pos_idx = 0;
+
+    for (I64 i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--json") == 0) {
+            json_mode = TRUE;
+        } else if (strcmp(argv[i], "--hex") == 0 && i + 1 < argc) {
+            hex_input = argv[++i];
+        } else if (argv[i][0] != '-') {
+            if (pos_idx == 0) addr = strtoull(argv[i], NULL, 16);
+            else if (pos_idx == 1) {
+                count = atoi(argv[i]);
+                if (count <= 0) count = 8;
+                if (count > 32) count = 32;
+            }
+            pos_idx++;
+        }
     }
 
-    ShellPrintOut("\033[93mADDRESS            BYTES             DISASSEMBLY (x86_64)\033[0m\n");
-    ShellPrintOut("----------------------------------------------------------\n");
+    if (hex_input) {
+        U8 raw_bytes[256];
+        I64 nbytes = DisasmParseHexStream(hex_input, raw_bytes, sizeof(raw_bytes));
+        if (nbytes <= 0) {
+            if (json_mode) ShellPrintOut("{\"error\":\"invalid hex byte stream\"}\n");
+            else ShellPrintOut("disasm: invalid hex byte stream '%s'\n", hex_input);
+            g_last_exit_code = 1;
+            return;
+        }
+
+        if (json_mode) {
+            ShellPrintOut("{\"arch\":\"x86_64\",\"instructions\":[");
+        } else {
+            ShellPrintOut("\033[93mADDRESS            BYTES             DISASSEMBLY (x86_64)\033[0m\n");
+            ShellPrintOut("----------------------------------------------------------\n");
+        }
+
+        I64 off = 0;
+        Bool first = TRUE;
+        while (off < nbytes) {
+            char bstr[64], astr[128];
+            U64 cur_addr = addr + (U64)off;
+            I64 consumed = DisasmDecodeInstruction(raw_bytes + off, nbytes - off, cur_addr, bstr, sizeof(bstr), astr, sizeof(astr));
+            if (consumed <= 0) consumed = 1;
+            if (json_mode) {
+                ShellPrintOut("%s{\"address\":\"0x%016llX\",\"bytes\":\"%s\",\"asm\":\"%s\"}",
+                              first ? "" : ",", (unsigned long long)cur_addr, bstr, astr);
+                first = FALSE;
+            } else {
+                ShellPrintOut("\033[96m0x%016llX\033[0m  %-16s  \033[92m%s\033[0m\n",
+                              (unsigned long long)cur_addr, bstr, astr);
+            }
+            off += consumed;
+        }
+        if (json_mode) ShellPrintOut("]}\n");
+        g_last_exit_code = 0;
+        return;
+    }
+
+    if (json_mode) {
+        ShellPrintOut("{\"arch\":\"x86_64\",\"instructions\":[");
+    } else {
+        ShellPrintOut("\033[93mADDRESS            BYTES             DISASSEMBLY (x86_64)\033[0m\n");
+        ShellPrintOut("----------------------------------------------------------\n");
+    }
 
     for (I64 i = 0; i < count; ++i) {
         U64 cur = addr + i * 4;
@@ -3181,9 +3483,15 @@ U0 ShellCmdDisasm(I64 argc, char **argv) {
             case 8: bytes = "5D"; asm_str = "pop     rbp"; break;
             case 9: bytes = "C3"; asm_str = "ret"; break;
         }
-        ShellPrintOut("\033[96m0x%016llX\033[0m  %-16s  \033[92m%s\033[0m\n",
-                      (unsigned long long)cur, bytes, asm_str);
+        if (json_mode) {
+            ShellPrintOut("%s{\"address\":\"0x%016llX\",\"bytes\":\"%s\",\"asm\":\"%s\"}",
+                          (i == 0) ? "" : ",", (unsigned long long)cur, bytes, asm_str);
+        } else {
+            ShellPrintOut("\033[96m0x%016llX\033[0m  %-16s  \033[92m%s\033[0m\n",
+                          (unsigned long long)cur, bytes, asm_str);
+        }
     }
+    if (json_mode) ShellPrintOut("]}\n");
     g_last_exit_code = 0;
 }
 
@@ -3471,8 +3779,15 @@ I64 ShellExecuteCommand(I64 argc, char **argv) {
         if (argc > 1) EditorRun((const U8*)argv[1]);
         else Print("Usage: ed <filename>\n");
     } else if (strcmp(cmd, "holyc") == 0) {
-        if (argc > 1) HolyCRunScript((const U8*)argv[1]);
-        else HolyCRepl();
+        if (argc > 2 && (strcmp(argv[1], "-e") == 0 || strcmp(argv[1], "--eval") == 0)) {
+            HolyCEvalString(argv[2]);
+            g_last_exit_code = 0;
+        } else if (argc > 1) {
+            HolyCRunScript((const U8*)argv[1]);
+            g_last_exit_code = 0;
+        } else {
+            HolyCRepl();
+        }
     } else if (strcmp(cmd, "exit") == 0 || strcmp(cmd, "reboot") == 0 || strcmp(cmd, "halt") == 0) {
         return -999; /* Signal to exit shell loop */
     } else {
@@ -4102,8 +4417,21 @@ I64 ShellExecuteCommandLine(char *line) {
             }
         }
 
-        /* Normal command up to semicolon */
-        char *semi = strchr(curr, ';');
+        /* Normal command up to unquoted semicolon */
+        char *semi = NULL;
+        char quote_ch = 0;
+        for (char *sp = curr; *sp; ++sp) {
+            if (quote_ch) {
+                if (*sp == quote_ch && (sp == curr || *(sp - 1) != '\\')) {
+                    quote_ch = 0;
+                }
+            } else if (*sp == '\'' || *sp == '"') {
+                quote_ch = *sp;
+            } else if (*sp == ';') {
+                semi = sp;
+                break;
+            }
+        }
         if (semi) {
             *semi = '\0';
             last_res = ShellRunLogicalLine(curr);

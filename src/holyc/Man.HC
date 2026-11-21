@@ -98,8 +98,12 @@ static const ManEntry g_man_pages[] = {
       "Print user and group information for current or specified USER." },
 
     { "redsea", 1, "TempleOS 64-bit RedSea filesystem inspector",
-      "redsea [inspect | ls | cat] IMAGE",
-      "Inspect, list files, and read files from 64-bit RedSea disk images." },
+      "redsea [inspect | ls | cat | put | extract | fsck] [--json] IMAGE [ARGS...]",
+      "Inspect, list files, read/write contiguous clusters, extract files, and run fsck on 64-bit RedSea disk images." },
+
+    { "disasm", 1, "in-kernel x86-64 machine instruction disassembler",
+      "disasm [--json] [ADDR [COUNT]] | disasm [--json] --hex \"HEX_BYTES\"",
+      "Disassemble Ring-0 memory addresses or arbitrary x86-64 machine byte sequences." },
 
     { "tar", 1, "POSIX USTAR archive utility",
       "tar [-c | -x | -t] -f ARCHIVE [FILES...]",
@@ -161,7 +165,7 @@ U0 ManDisplayPage(const ManEntry *e) {
     Print("\033[92mAUTHOR\033[0m\n");
     Print("       HolyC-Unix Kernel Team (Terry A. Davis Memorial Architecture)\n\n");
 
-    Print("\033[93mHolyC-Unix 1.0.0\033[0m                 \033[90mOctober 2026\033[0m                       \033[93m%s(%d)\033[0m\n",
+    Print("\033[93mHolyC-Unix 0.2.0\033[0m                 \033[90mNovember 2026\033[0m                      \033[93m%s(%d)\033[0m\n",
           e->name, e->section);
 }
 

@@ -1,5 +1,5 @@
 NAME="HolyC-Unix"
-VERSION="1.0.0-holyc (TerryDavis)"
+VERSION="0.2.0-holyc (TerryDavis)"
 ID=holyc-unix
 PRETTY_NAME="HolyC Unix Terminal Operating System"
 ANSI_COLOR="1;34"
