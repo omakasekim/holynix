@@ -1,9 +1,9 @@
 # HolyNix: Unix Kernel & Terminal Operating System in HolyC
 
-[![HolyNix CI](https://github.com/Aetherx86/holynix/actions/workflows/ci.yml/badge.svg)](https://github.com/Aetherx86/holynix/actions/workflows/ci.yml)
+[![HolyNix CI](https://github.com/omakasekim/holynix/actions/workflows/ci.yml/badge.svg)](https://github.com/omakasekim/holynix/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![HolyC: v0.2.0](https://img.shields.io/badge/HolyC-v0.2.0-blue.svg)](https://github.com/Aetherx86/holynix)
-[![POSIX: Compliant](https://img.shields.io/badge/POSIX-Compliant-brightgreen.svg)](https://github.com/Aetherx86/holynix)
+[![HolyC: v0.2.0](https://img.shields.io/badge/HolyC-v0.2.0-blue.svg)](https://github.com/omakasekim/holynix)
+[![POSIX: Compliant](https://img.shields.io/badge/POSIX-Compliant-brightgreen.svg)](https://github.com/omakasekim/holynix)
 
 > *"An idiot admires complexity, a genius admires simplicity."* — **Terry A. Davis**
 
